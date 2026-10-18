@@ -24,9 +24,9 @@ interface HttpClient
      *   errors, timeouts, …), but never for HTTP error status codes, which are
      *   returned as a normal {@see Response};
      * - return the response headers with lower-cased names;
-     * - not follow redirects, so the API key is never sent to another host.
+     * - not follow redirects, so the signed request is never sent to another host.
      *
-     * The request carries the API key in its `Authorization` header. Mark the
+     * The request carries the signature in its `Authorization` header. Mark the
      * parameter `#[SensitiveParameter]` in an implementation as well (PHP does
      * not inherit the attribute), so that a stack trace with arguments never
      * holds the key.

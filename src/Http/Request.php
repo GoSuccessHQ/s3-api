@@ -30,7 +30,7 @@ final readonly class Request
     ) {}
 
     /**
-     * Hide the API key in the `Authorization` header from var_dump() and print_r().
+     * Hide the signature in the `Authorization` header from var_dump() and print_r().
      *
      * @return array<string, mixed>
      */
