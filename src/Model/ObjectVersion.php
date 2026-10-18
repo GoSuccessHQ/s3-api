@@ -17,6 +17,6 @@ final readonly class ObjectVersion
         public bool $isLatest,
         public int $size,
         public string $etag,
-        public DateTimeImmutable $lastModified,
+        public ?DateTimeImmutable $lastModified,
     ) {}
 }

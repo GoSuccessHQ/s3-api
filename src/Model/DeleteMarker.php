@@ -16,6 +16,6 @@ final readonly class DeleteMarker
         public string $key,
         public string $versionId,
         public bool $isLatest,
-        public DateTimeImmutable $lastModified,
+        public ?DateTimeImmutable $lastModified,
     ) {}
 }

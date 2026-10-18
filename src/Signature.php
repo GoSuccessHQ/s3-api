@@ -148,7 +148,8 @@ final readonly class Signature
         $lines = [];
 
         foreach ($headers as $name => $value) {
-            $lines[strtolower(trim($name))] = trim($value);
+            // SigV4 "trimall": runs of spaces inside a value count as one; the sent value stays as it is.
+            $lines[strtolower(trim($name))] = (string) preg_replace('/ +/', ' ', trim($value));
         }
 
         ksort($lines, \SORT_STRING);

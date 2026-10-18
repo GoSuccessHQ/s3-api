@@ -6,10 +6,12 @@ namespace GoSuccess\S3;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use Exception;
 use GoSuccess\S3\Exception\ApiException;
 use GoSuccess\S3\Exception\SerializationException;
 use GoSuccess\S3\Http\Connection;
 use GoSuccess\S3\Http\Response;
+use SensitiveParameter;
 use SimpleXMLElement;
 
 /**
@@ -26,7 +28,7 @@ final class Xml
      *                                (e.g. CompleteMultipartUpload)
      * @throws SerializationException for a body that is not XML or has another root
      */
-    public static function parse(Response $response, string $root, Connection $connection): SimpleXMLElement
+    public static function parse(Response $response, string $root, #[SensitiveParameter] Connection $connection): SimpleXMLElement
     {
         $xml = self::load($response->body);
 
@@ -87,11 +89,36 @@ final class Xml
     {
         $text = self::required($element, $field);
 
-        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/D', $text) !== 1) {
-            throw new SerializationException("The S3 answer has an unreadable {$field}.");
+        return self::parseDate($text) ?? throw new SerializationException("The S3 answer has an unreadable {$field}.");
+    }
+
+    /**
+     * Like {@see date()}, but null when the time is missing or unreadable, so one
+     * odd entry does not make a whole listing unreadable.
+     */
+    public static function nullableDate(?SimpleXMLElement $element): ?DateTimeImmutable
+    {
+        $text = self::text($element);
+
+        return $text === null ? null : self::parseDate($text);
+    }
+
+    /**
+     * An ISO 8601 time, only if it names a real moment (no 30 February, no hour 25).
+     */
+    private static function parseDate(string $text): ?DateTimeImmutable
+    {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/D', $text, $parts) !== 1
+            || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])
+            || (int) $parts[4] > 23 || (int) $parts[5] > 59 || (int) $parts[6] > 59) {
+            return null;
         }
 
-        return new DateTimeImmutable((string) preg_replace('/(\.\d{6})\d+/', '$1', $text))->setTimezone(new DateTimeZone('UTC'));
+        try {
+            return new DateTimeImmutable((string) preg_replace('/(\.\d{6})\d+/', '$1', $text))->setTimezone(new DateTimeZone('UTC'));
+        } catch (Exception) {
+            return null;
+        }
     }
 
     /**

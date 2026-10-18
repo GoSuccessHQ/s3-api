@@ -9,10 +9,13 @@ use GoSuccess\S3\ClientOptions;
 use GoSuccess\S3\Clock;
 use GoSuccess\S3\Exception\ApiException;
 use GoSuccess\S3\Exception\ErrorDetails;
+use GoSuccess\S3\Exception\RateLimitException;
 use GoSuccess\S3\Exception\TransportException;
 use GoSuccess\S3\Signature;
 use GoSuccess\S3\Xml;
+use InvalidArgumentException;
 use LogicException;
+use SensitiveParameter;
 
 /**
  * Signed requests to one S3 endpoint with retries.
@@ -31,6 +34,7 @@ final class Connection
 
     public function __construct(
         private readonly Addressing $addressing,
+        #[SensitiveParameter]
         private readonly Signature $signature,
         private readonly ClientOptions $options,
         private readonly HttpClient $httpClient,
@@ -97,6 +101,13 @@ final class Connection
      */
     private function request(Method $method, string $bucket, string $key, array $query, string $body, array $headers): Request
     {
+        foreach ($headers as $name => $value) {
+            // A line break would end the header and inject another, unsigned one.
+            if (preg_match('/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+$/D', $name) !== 1 || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+                throw new InvalidArgumentException('A header name must be a token and a header value must not contain control characters.');
+            }
+        }
+
         $signed = $this->signature->headersFor(
             $method->value,
             $this->addressing->path($bucket, $key),
@@ -119,9 +130,9 @@ final class Connection
     }
 
     /**
-     * @param callable(): Response $attempt Builds a freshly signed request each time.
+     * @param callable(): Response $attempt Builds a freshly signed request each time; it holds the connection.
      */
-    private function retrying(Method $method, callable $attempt): Response
+    private function retrying(Method $method, #[SensitiveParameter] callable $attempt): Response
     {
         $retries = $method->isIdempotent() ? $this->options->maxRetries : 0;
 
@@ -142,7 +153,7 @@ final class Connection
                 return $response;
             }
 
-            $this->wait($try);
+            $this->wait($try, RateLimitException::parseRetryAfter($response->header('retry-after')));
         }
     }
 
@@ -154,9 +165,12 @@ final class Connection
         return $throttled ? $this->options->retryOnThrottle : $response->statusCode >= 500;
     }
 
-    private function wait(int $try): void
+    /**
+     * Waits with exponential backoff, or as long as the server asked (`Retry-After`), at most `maxRetryDelay`.
+     */
+    private function wait(int $try, ?int $retryAfter = null): void
     {
-        $delay = min($this->options->maxRetryDelay, $this->options->retryBaseDelay * (2 ** $try));
+        $delay = min($this->options->maxRetryDelay, max((float) ($retryAfter ?? 0), $this->options->retryBaseDelay * (2 ** $try)));
 
         if ($delay > 0.0) {
             usleep((int) ($delay * 1_000_000));

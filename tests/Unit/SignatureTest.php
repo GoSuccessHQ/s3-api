@@ -83,6 +83,15 @@ final class SignatureTest extends TestCase
         self::assertStringEndsWith('Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41', $headers['Authorization']);
     }
 
+    public function testRepeatedSpacesInHeaderValuesAreCollapsedForSigning(): void
+    {
+        $double = $this->signature()->headersFor('PUT', '/k', [], ['Host' => self::HOST, 'x-amz-meta-note' => ' a  b   c '], self::EMPTY, $this->now());
+        $single = $this->signature()->headersFor('PUT', '/k', [], ['Host' => self::HOST, 'x-amz-meta-note' => 'a b c'], self::EMPTY, $this->now());
+
+        self::assertSame($single['Authorization'], $double['Authorization']);
+        self::assertSame(' a  b   c ', $double['x-amz-meta-note']);
+    }
+
     public function testTheSecretIsNotInDebugOutput(): void
     {
         self::assertStringNotContainsString('EXAMPLEKEY', print_r($this->signature(), true));

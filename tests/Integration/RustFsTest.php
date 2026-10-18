@@ -81,6 +81,29 @@ final class RustFsTest extends TestCase
         self::assertCount(3, $keys);
     }
 
+    public function testRepeatedSpacesInMetadataAndContentType(): void
+    {
+        $bucket = $this->bucket();
+
+        $bucket->putObject('spaced', 'x', 'text/plain;  charset=utf-8', ['note' => 'a  b']);
+
+        self::assertSame('a  b', $bucket->headObject('spaced')?->metadata['note'] ?? null);
+    }
+
+    public function testDotSegmentKeysAreSentLiterally(): void
+    {
+        $bucket = $this->bucket();
+
+        try {
+            $bucket->putObject('a/../b.txt', 'x');
+            // A server that stores such keys (AWS does) must give them back.
+            self::assertSame('x', $bucket->getObject('a/../b.txt')->body);
+        } catch (ApiException $exception) {
+            // RustFS 1.0.1 refuses them; what matters is a clear refusal, not a signature mismatch.
+            self::assertNotSame(403, $exception->statusCode, $exception->getMessage());
+        }
+    }
+
     public function testListingPagesAndPrefixes(): void
     {
         $bucket = $this->bucket();

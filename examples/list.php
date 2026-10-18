@@ -16,5 +16,5 @@ assert($s3 instanceof S3);
 $bucket = $s3->bucket($argv[1] ?? 'backups');
 
 foreach ($bucket->objects($argv[2] ?? '') as $object) {
-    printf("%10d  %s  %s\n", $object->size, $object->lastModified->format('Y-m-d H:i:s'), $object->key);
+    printf("%10d  %19s  %s\n", $object->size, $object->lastModified?->format('Y-m-d H:i:s') ?? '-', $object->key);
 }

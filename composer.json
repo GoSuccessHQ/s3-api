@@ -28,7 +28,6 @@
     "require": {
         "php": "^8.4",
         "ext-curl": "*",
-        "ext-json": "*",
         "ext-libxml": "*",
         "ext-simplexml": "*"
     },

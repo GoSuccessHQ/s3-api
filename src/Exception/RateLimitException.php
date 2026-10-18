@@ -11,9 +11,9 @@ use GoSuccess\S3\Http\Response;
 /**
  * The request was rejected because the rate limit was exceeded (HTTP 429).
  *
- * The client never retries a `429`: the feed is one large download, and the
- * caller decides when to try again. {@see $retryAfter} holds the number of
- * seconds to wait, when the API announced it.
+ * The server throttled the request (HTTP 429). The client retries it only with
+ * `ClientOptions::$retryOnThrottle`; {@see $retryAfter} holds the number of
+ * seconds to wait, when the server announced it.
  */
 final class RateLimitException extends ApiException
 {

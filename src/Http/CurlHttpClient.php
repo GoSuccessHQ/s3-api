@@ -96,7 +96,8 @@ final class CurlHttpClient implements StreamingHttpClient
             \CURLOPT_FOLLOWLOCATION => false,
             // Never file://, ftp:// or the like, whatever the URI says.
             \CURLOPT_PROTOCOLS_STR => 'http,https',
-            \CURLOPT_ENCODING => '',
+            // Keys are signed literally; without this cURL would drop "." and ".." segments.
+            \CURLOPT_PATH_AS_IS => true,
             \CURLOPT_HTTPHEADER => $this->formatHeaders($request->headers),
             \CURLOPT_CONNECTTIMEOUT_MS => $this->milliseconds($request->connectTimeout ?? $this->connectTimeout),
             \CURLOPT_HEADERFUNCTION => static function (CurlHandle $_handle, string $line) use (&$headers, &$reasonPhrase): int {
@@ -173,7 +174,7 @@ final class CurlHttpClient implements StreamingHttpClient
 
         if (!$request->method->isIdempotent() || $request->method === Method::Put) {
             // Send an explicit "Content-Length: 0"; servers may reject a body-less
-            // POST without it (411 Length Required), e.g. pinning an announcement.
+            // POST without it (411 Length Required), e.g. completing a multipart upload.
             $options[\CURLOPT_POSTFIELDS] = '';
         }
     }

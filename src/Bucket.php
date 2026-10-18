@@ -34,6 +34,8 @@ use GoSuccess\S3\Model\Versioning;
 use GoSuccess\S3\Model\VersioningStatus;
 use InvalidArgumentException;
 use LogicException;
+use SensitiveParameter;
+use Throwable;
 
 /**
  * The operations on one bucket.
@@ -57,6 +59,7 @@ final readonly class Bucket
      */
     public function __construct(
         public string $name,
+        #[SensitiveParameter]
         private Connection $connection,
     ) {}
 
@@ -145,7 +148,7 @@ final readonly class Bucket
                 key: Xml::required($entry->Key, 'Key'),
                 size: (int) Xml::text($entry->Size),
                 etag: Xml::etag(Xml::text($entry->ETag)),
-                lastModified: Xml::date($entry->LastModified, 'LastModified'),
+                lastModified: Xml::nullableDate($entry->LastModified),
                 storageClass: Xml::text($entry->StorageClass),
             );
         }
@@ -158,7 +161,8 @@ final readonly class Bucket
     }
 
     /**
-     * Every object under the prefix, page by page; ends when S3 sends no next token.
+     * Every object under the prefix, page by page; ends when S3 sends no next
+     * token, and raises when it repeats one.
      *
      * @return Generator<int, ObjectSummary>
      *
@@ -172,6 +176,10 @@ final readonly class Bucket
             $page = $this->listObjects($prefix, $token);
 
             yield from $page->objects;
+
+            if ($page->nextContinuationToken !== null && $page->nextContinuationToken === $token) {
+                throw new SerializationException('The S3 server repeated its continuation token; the listing would never end.');
+            }
 
             $token = $page->nextContinuationToken;
         } while ($page->isTruncated && $token !== null);
@@ -209,14 +217,14 @@ final readonly class Bucket
                     isLatest: Xml::bool($entry->IsLatest),
                     size: (int) Xml::text($entry->Size),
                     etag: Xml::etag(Xml::text($entry->ETag)),
-                    lastModified: Xml::date($entry->LastModified, 'LastModified'),
+                    lastModified: Xml::nullableDate($entry->LastModified),
                 );
             } elseif ($name === 'DeleteMarker') {
                 $entries[] = new DeleteMarker(
                     key: Xml::required($entry->Key, 'Key'),
                     versionId: Xml::required($entry->VersionId, 'VersionId'),
                     isLatest: Xml::bool($entry->IsLatest),
-                    lastModified: Xml::date($entry->LastModified, 'LastModified'),
+                    lastModified: Xml::nullableDate($entry->LastModified),
                 );
             }
         }
@@ -226,7 +234,7 @@ final readonly class Bucket
 
     /**
      * Every version and delete marker under the prefix, page by page; ends when
-     * S3 sends no next marker.
+     * S3 sends no next key marker, and raises when it repeats its markers.
      *
      * @return Generator<int, ObjectVersion|DeleteMarker>
      *
@@ -242,9 +250,14 @@ final readonly class Bucket
 
             yield from $page->entries;
 
+            if ($page->nextKeyMarker !== null && [$page->nextKeyMarker, $page->nextVersionIdMarker] === [$keyMarker, $versionIdMarker]) {
+                throw new SerializationException('The S3 server repeated its markers; the listing would never end.');
+            }
+
             $keyMarker = $page->nextKeyMarker;
             $versionIdMarker = $page->nextVersionIdMarker;
-        } while ($page->isTruncated && ($keyMarker !== null || $versionIdMarker !== null));
+            // A version-id-marker without a key-marker is rejected by S3.
+        } while ($page->isTruncated && $keyMarker !== null);
     }
 
     /**
@@ -265,14 +278,21 @@ final readonly class Bucket
 
     /**
      * Writes an object's content into the file at `$path` without holding it in
-     * memory; needs a {@see \GoSuccess\S3\Http\StreamingHttpClient}. On an error
-     * the file is removed.
+     * memory; needs a {@see \GoSuccess\S3\Http\StreamingHttpClient}. An existing
+     * file is overwritten; on any error (HTTP or network) the file is removed.
      *
      * @throws ApiException|TransportException|LogicException without a streaming transport
      */
     public function getObjectToFile(string $key, string $path, ?string $versionId = null): ObjectHead
     {
-        $response = $this->connection->sendToFile($this->name, $key, self::version($versionId), $path);
+        try {
+            $response = $this->connection->sendToFile($this->name, $key, self::version($versionId), $path);
+        } catch (Throwable $exception) {
+            // A partial download must never pass for the object.
+            @unlink($path);
+
+            throw $exception;
+        }
 
         if ($response->isSuccessful) {
             return ObjectHead::fromResponse($response);
@@ -483,7 +503,7 @@ final readonly class Bucket
         $body = '<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUpload>';
 
         foreach ($parts as $part) {
-            $body .= '<Part><PartNumber>' . $part->partNumber . '</PartNumber><ETag>"' . Xml::escape($part->etag) . '"</ETag></Part>';
+            $body .= '<Part><PartNumber>' . $part->partNumber . '</PartNumber><ETag>"' . Xml::escape(Xml::etag($part->etag)) . '"</ETag></Part>';
         }
 
         $body .= '</CompleteMultipartUpload>';
@@ -523,7 +543,7 @@ final readonly class Bucket
                 partNumber: (int) Xml::required($part->PartNumber, 'PartNumber'),
                 etag: Xml::etag(Xml::text($part->ETag)),
                 size: Xml::text($part->Size) === null ? null : (int) Xml::text($part->Size),
-                lastModified: Xml::text($part->LastModified) === null ? null : Xml::date($part->LastModified, 'LastModified'),
+                lastModified: Xml::nullableDate($part->LastModified),
             );
         }
 

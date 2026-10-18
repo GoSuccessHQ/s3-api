@@ -85,6 +85,20 @@ final class CurlHttpClientTest extends TestCase
         self::assertSame('application/json', $response->header('content-type'));
     }
 
+    public function testDotSegmentsAreSentAsIs(): void
+    {
+        $echo = $this->decode($this->send(new Request(Method::Get, $this->uri('/echo/./a/../b'))));
+
+        self::assertSame('/echo/./a/../b', $echo['path']);
+    }
+
+    public function testCompressedBodiesStayCompressed(): void
+    {
+        $response = $this->send(new Request(Method::Get, $this->uri('/gzip')));
+
+        self::assertSame(gzencode('hello'), $response->body);
+    }
+
     public function testErrorResponsesAreReturned(): void
     {
         $response = $this->send(new Request(Method::Get, $this->uri('/status/404')));

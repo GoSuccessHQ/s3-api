@@ -83,14 +83,6 @@ final class ApiExceptionTest extends TestCase
         self::assertSame($body, $exception->responseBody);
     }
 
-    public function testDecodesTheBody(): void
-    {
-        $exception = ApiException::fromResponse(new Response(400, '{"x":1}'), $this->request());
-
-        self::assertSame(['x' => 1], $exception->decodedBody());
-        self::assertNull(ApiException::fromResponse(new Response(502), $this->request())->decodedBody());
-    }
-
     public function testParsesRetryAfter(): void
     {
         $now = 1_800_000_000.0;

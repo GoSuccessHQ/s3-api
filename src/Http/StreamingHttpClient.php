@@ -10,9 +10,8 @@ use SensitiveParameter;
 /**
  * A transport that can write the response body into a file instead of memory.
  *
- * The feed is one large document; holding it in a string would cost its whole
- * size in memory, and decoding it at once several times that. The client
- * downloads it into a temporary file and reads it from there in pieces.
+ * {@see \GoSuccess\S3\Bucket::getObjectToFile()} uses it, so a large object
+ * never sits in memory as a whole.
  */
 interface StreamingHttpClient extends HttpClient
 {

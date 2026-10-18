@@ -16,13 +16,12 @@ protocol with Signature Version 4.
   presigned download links.
 - **Safe defaults**: retries only where a request may run twice, XML without
   external entities, never a governance bypass unless asked for.
-- **No dependencies** beyond `ext-curl`, `ext-json`, `ext-simplexml` and
-  `ext-libxml`.
+- **No dependencies** beyond `ext-curl`, `ext-simplexml` and `ext-libxml`.
 
 ## Requirements
 
 - PHP 8.4 or newer
-- `ext-curl`, `ext-json`, `ext-simplexml`, `ext-libxml`
+- `ext-curl`, `ext-simplexml`, `ext-libxml`
 
 ## Installation
 
@@ -48,8 +47,17 @@ $link = $bucket->presignedGetUrl('reports/2026-10.csv', 3600, downloadName: 'Rep
 ```
 
 Path style (`https://host/bucket/key`, the default) works with every server;
-pass `pathStyle: false` for virtual-host style (`https://bucket.host/key`).
-Keys are taken literally: for S3, `/a` and `a` are different objects.
+pass `pathStyle: false` for virtual-host style (`https://bucket.host/key`). A
+bucket name with dots fails over TLS in virtual-host style (the provider's
+wildcard certificate does not cover it); use path style for such names. The
+endpoint has no path: buckets live at its root. Bucket names are limited to
+letters, digits, `.`, `_` and `-`, so a name can never change the host.
+
+Keys are taken literally: for S3, `/a` and `a` are different objects, and `.` or
+`..` segments are sent as they are (a server may refuse them). Header names must
+be tokens and values free of control characters, so metadata cannot inject a
+header; repeated spaces in a value are kept as sent and collapsed only for
+signing, as Signature V4 requires.
 
 ## Operations
 
@@ -69,7 +77,14 @@ Keys are taken literally: for S3, `/a` and `a` are different objects.
 | `presignedGetUrl()` | presigned `GET`, 1 s to a week, optionally as an attachment |
 
 Listings walk every page and end when the server sends no next token or
-marker, also when it claims truncation without one.
+marker, also when it claims truncation without one; a server that repeats its
+token raises `SerializationException` instead of looping. An unreadable or
+missing `LastModified` in a listing is `null`, so one odd entry does not hide
+the others.
+
+Downloads return the stored bytes: an object stored with `Content-Encoding:
+gzip` comes back compressed. `getObjectToFile()` overwrites the file and removes
+it on any error, also a network failure mid-download.
 
 ### Governance bypass
 
@@ -81,7 +96,9 @@ report that as a problem.
 
 ## Errors and retries
 
-Every exception implements `GoSuccess\S3\Exception\S3Exception`. Error responses
+Every exception implements `GoSuccess\S3\Exception\S3Exception`; the secret key
+and signatures never appear in messages, debug output or the arguments of stack
+traces (`#[SensitiveParameter]`). Error responses
 become `ApiException` subclasses by status (`NotFoundException`,
 `ForbiddenException`, `ServerException`, …) with S3's `<Code>` in `errorCode`
 and `<RequestId>` in `requestId`. An `<Error>` that arrives with HTTP 200 (as
@@ -90,7 +107,10 @@ XML raises `SerializationException`.
 
 Network failures and 5xx are retried with backoff for `GET`, `HEAD`, `PUT` and
 `DELETE`, never for `POST` (multipart, multi-delete). A throttle (`429`, `503
-SlowDown`) is retried only with `ClientOptions(retryOnThrottle: true)`.
+SlowDown`) is retried only with `ClientOptions(retryOnThrottle: true)`, waiting at
+least as long as `Retry-After` says (capped by `maxRetryDelay`). A `PUT` retried
+after a lost answer may leave an extra version in a versioned bucket; pass
+`maxRetries: 0` where that matters.
 
 ## Configuration and custom transport
 

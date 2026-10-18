@@ -85,12 +85,4 @@ class ApiException extends RuntimeException implements S3Exception
             default => new self(...$arguments),
         };
     }
-
-    /**
-     * The decoded JSON error body, or null if the body is not JSON.
-     */
-    public function decodedBody(): mixed
-    {
-        return $this->responseBody === '' ? null : json_decode($this->responseBody, true);
-    }
 }

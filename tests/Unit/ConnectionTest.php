@@ -85,6 +85,16 @@ final class ConnectionTest extends TestCase
         self::assertSame(200, $this->connection($http, options: new ClientOptions(retryBaseDelay: 0.0, retryOnThrottle: true))->send(Method::Get, 'b', 'k')->statusCode);
     }
 
+    public function testThrottleRetriesHonourRetryAfter(): void
+    {
+        $http = new MockHttpClient(new Response(429, '', ['retry-after' => '1']), new Response(200));
+        $started = microtime(true);
+
+        $this->connection($http, options: new ClientOptions(retryBaseDelay: 0.0, maxRetryDelay: 5.0, retryOnThrottle: true))->send(Method::Get, 'b', 'k');
+
+        self::assertGreaterThanOrEqual(0.9, microtime(true) - $started);
+    }
+
     public function testHeadIsSent(): void
     {
         $http = new MockHttpClient(new Response(200));

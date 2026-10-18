@@ -12,13 +12,14 @@ use DateTimeImmutable;
 final readonly class ObjectSummary
 {
     /**
-     * @param string $etag Without the quotes S3 puts around it.
+     * @param string                 $etag         Without the quotes S3 puts around it.
+     * @param DateTimeImmutable|null $lastModified null when the server sent none or an unreadable one.
      */
     public function __construct(
         public string $key,
         public int $size,
         public string $etag,
-        public DateTimeImmutable $lastModified,
+        public ?DateTimeImmutable $lastModified,
         public ?string $storageClass,
     ) {}
 }

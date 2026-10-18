@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace GoSuccess\S3\Http;
 
 /**
- * HTTP methods. The feed is only read with GET; the others exist for custom
- * transports and tests that share the Http layer of the GoSuccess clients.
+ * The HTTP methods S3 uses.
  */
 enum Method: string
 {

@@ -7,6 +7,7 @@ namespace GoSuccess\S3\Tests\Unit;
 use GoSuccess\S3\Bucket;
 use GoSuccess\S3\ClientOptions;
 use GoSuccess\S3\Exception\ForbiddenException;
+use GoSuccess\S3\Exception\SerializationException;
 use GoSuccess\S3\Http\Response;
 use GoSuccess\S3\Model\DeleteMarker;
 use GoSuccess\S3\Model\ObjectVersion;
@@ -14,6 +15,7 @@ use GoSuccess\S3\Model\RetentionMode;
 use GoSuccess\S3\Model\VersioningStatus;
 use GoSuccess\S3\S3;
 use GoSuccess\S3\Tests\Support\MockHttpClient;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\CoversNamespace;
 use PHPUnit\Framework\TestCase;
@@ -95,7 +97,7 @@ final class BucketReadTest extends TestCase
         self::assertSame(['a/1.txt', 'a/&2.txt'], array_map(static fn($object): string => $object->key, $page->objects));
         self::assertSame('e1', $page->objects[0]->etag);
         self::assertSame(5, $page->objects[0]->size);
-        self::assertSame('2026-10-18T10:00:00+00:00', $page->objects[0]->lastModified->format(\DATE_ATOM));
+        self::assertSame('2026-10-18T10:00:00+00:00', $page->objects[0]->lastModified?->format(\DATE_ATOM));
         self::assertSame('STANDARD', $page->objects[0]->storageClass);
         self::assertNull($page->objects[1]->storageClass);
         self::assertSame(['a/sub/'], $page->commonPrefixes);
@@ -148,6 +150,51 @@ final class BucketReadTest extends TestCase
         self::assertCount(1, iterator_to_array($bucket->versions(), false));
         self::assertCount(0, iterator_to_array($bucket->objects(), false));
         self::assertSame(2, $http->callCount());
+    }
+
+    public function testUnreadableLastModifiedIsNull(): void
+    {
+        $http = new MockHttpClient(new Response(200, '<ListBucketResult ' . self::NS . '><IsTruncated>false</IsTruncated><Contents><Key>k</Key><LastModified>2026-02-30T10:00:00Z</LastModified><ETag>"e"</ETag><Size>1</Size></Contents><Contents><Key>j</Key><ETag>"e"</ETag><Size>1</Size></Contents></ListBucketResult>'));
+
+        $page = $this->bucket($http)->listObjects();
+
+        self::assertNull($page->objects[0]->lastModified);
+        self::assertNull($page->objects[1]->lastModified);
+    }
+
+    public function testVersionsNeedAKeyMarkerToContinue(): void
+    {
+        $http = new MockHttpClient(new Response(200, '<ListVersionsResult ' . self::NS . '><IsTruncated>true</IsTruncated><NextVersionIdMarker>v1</NextVersionIdMarker></ListVersionsResult>'));
+
+        self::assertSame([], iterator_to_array($this->bucket($http)->versions(), false));
+        self::assertSame(1, $http->callCount());
+    }
+
+    public function testARepeatedTokenStopsWithAnError(): void
+    {
+        $page = '<ListBucketResult ' . self::NS . '><IsTruncated>true</IsTruncated><NextContinuationToken>same</NextContinuationToken></ListBucketResult>';
+        $http = new MockHttpClient(new Response(200, $page), new Response(200, $page));
+
+        $this->expectException(SerializationException::class);
+
+        iterator_to_array($this->bucket($http)->objects(), false);
+    }
+
+    public function testInvalidBucketNamesAndEndpointPathsAreRefused(): void
+    {
+        $s3 = new S3('http://127.0.0.1:9100', 'us-east-1', 'AKIAIOSFODNN7EXAMPLE', 'secret');
+
+        foreach (['evil.example/', 'a#b', 'a b', '', 'a?b'] as $name) {
+            try {
+                $s3->bucket($name);
+                self::fail("Accepted {$name}.");
+            } catch (InvalidArgumentException) {
+            }
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+
+        new S3('https://s3.example.test/prefix', 'us-east-1', 'AKIAIOSFODNN7EXAMPLE', 'secret');
     }
 
     public function testEmptyListing(): void

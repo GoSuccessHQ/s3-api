@@ -19,7 +19,7 @@ final class Response
     /**
      * @param array<string, string> $headers      Map of lower-cased header name => value;
      *                                            repeated headers are joined with ", ".
-     * @param string                $reasonPhrase Empty over HTTP/2, which the API uses.
+     * @param string                $reasonPhrase Empty over HTTP/2.
      */
     public function __construct(
         public readonly int $statusCode,

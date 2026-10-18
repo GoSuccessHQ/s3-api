@@ -6,6 +6,7 @@ namespace GoSuccess\S3\Tests\Support;
 
 use GoSuccess\S3\Addressing;
 use GoSuccess\S3\ClientOptions;
+use GoSuccess\S3\Exception\TransportException;
 use GoSuccess\S3\Http\Connection;
 use GoSuccess\S3\Http\CurlHttpClient;
 use GoSuccess\S3\Http\Method;
@@ -85,21 +86,37 @@ final class RustFs
             $batch[] = new ObjectIdentifier($entry->key, $entry instanceof DeleteMarker || $entry->versionId !== 'null' ? $entry->versionId : null);
         }
 
-        foreach ($bucket->objects() as $object) {
-            $batch[] = new ObjectIdentifier($object->key);
+        // Only an unversioned bucket is emptied by key: in a versioned one that would add delete markers.
+        if ($batch === []) {
+            foreach ($bucket->objects() as $object) {
+                $batch[] = new ObjectIdentifier($object->key);
+            }
         }
 
         foreach (array_chunk($batch, 1000) as $chunk) {
-            $bucket->deleteObjects($chunk, quiet: true, bypassGovernanceRetention: true);
+            $result = $bucket->deleteObjects($chunk, quiet: true, bypassGovernanceRetention: true);
+
+            if ($result->errors !== []) {
+                throw new RuntimeException("Cleaning up {$name} failed for {$result->errors[0]->key}: {$result->errors[0]->code}");
+            }
         }
 
-        $this->connection->send(Method::Delete, $name);
+        $response = $this->connection->send(Method::Delete, $name);
+
+        if (!$response->isSuccessful) {
+            throw new RuntimeException("Deleting the test bucket {$name} failed with HTTP {$response->statusCode}.");
+        }
     }
 
     private function waitUntilReady(): void
     {
-        for ($attempt = 0; $attempt < 30; $attempt++) {
-            $status = $this->connection->send(Method::Get, '')->statusCode;
+        for ($attempt = 0; $attempt < 60; $attempt++) {
+            try {
+                $status = $this->connection->send(Method::Get, '')->statusCode;
+            } catch (TransportException) {
+                // Right after `docker run` the port refuses connections.
+                $status = 0;
+            }
 
             if ($status !== 503 && $status !== 0) {
                 return;

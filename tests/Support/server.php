@@ -40,11 +40,18 @@ switch ($segments[0]) {
         header('X-Custom: two', false);
         echo json_encode([
             'method' => $method,
+            'path' => is_string($_SERVER['REQUEST_URI'] ?? null) ? explode('?', $_SERVER['REQUEST_URI'], 2)[0] : '',
             'query' => $_SERVER['QUERY_STRING'] ?? '',
             'headers' => $headers,
             'bodyLength' => strlen($body),
             'body' => strlen($body) <= 1024 ? $body : null,
         ]);
+        break;
+
+    case 'gzip':
+        // A stored object with Content-Encoding: gzip; a storage client must return these bytes.
+        header('Content-Encoding: gzip');
+        echo gzencode('hello');
         break;
 
     case 'status':

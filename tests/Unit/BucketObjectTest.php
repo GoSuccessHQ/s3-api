@@ -10,6 +10,8 @@ use GoSuccess\S3\ClientOptions;
 use GoSuccess\S3\Clock;
 use GoSuccess\S3\Exception\ApiException;
 use GoSuccess\S3\Exception\NotFoundException;
+use GoSuccess\S3\Exception\SerializationException;
+use GoSuccess\S3\Exception\TransportException;
 use GoSuccess\S3\Http\Response;
 use GoSuccess\S3\Model\ObjectIdentifier;
 use GoSuccess\S3\Model\Part;
@@ -266,6 +268,80 @@ final class BucketObjectTest extends TestCase
         $this->bucket(new MockHttpClient())->uploadPart('big', 'up1', 10001, 'x');
     }
 
+    public function testControlCharactersInHeadersAreRefused(): void
+    {
+        $http = new MockHttpClient();
+        $bucket = $this->bucket($http);
+
+        foreach ([
+            static fn() => $bucket->putObject('k', 'x', metadata: ['n' => "v\r\nx-injected: yes"]),
+            static fn() => $bucket->putObject('k', 'x', metadata: ['bad name' => 'v']),
+            static fn() => $bucket->putObject('k', 'x', "text/plain\n"),
+        ] as $call) {
+            try {
+                $call();
+                self::fail('No exception.');
+            } catch (InvalidArgumentException) {
+            }
+        }
+
+        self::assertSame(0, $http->callCount());
+    }
+
+    public function testAFailedTransferRemovesThePartialFile(): void
+    {
+        $path = (string) tempnam(sys_get_temp_dir(), 's3-api-test-');
+        $http = new MockHttpClient();
+        $http->onSend = static function () use ($path): never {
+            file_put_contents($path, 'half');
+
+            throw new TransportException('connection reset');
+        };
+
+        try {
+            $this->bucket($http)->getObjectToFile('k', $path);
+            self::fail('No exception.');
+        } catch (TransportException) {
+            self::assertFileDoesNotExist($path);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testCompleteNormalizesQuotedEtags(): void
+    {
+        $http = new MockHttpClient(new Response(200, '<CompleteMultipartUploadResult><ETag>"w"</ETag></CompleteMultipartUploadResult>'));
+
+        $this->bucket($http)->completeMultipartUpload('big', 'up1', [new Part(1, '"p1"')]);
+
+        self::assertStringContainsString('<ETag>"p1"</ETag>', (string) $http->requests[0]->body);
+    }
+
+    public function testSecretIsNotInTraceArguments(): void
+    {
+        $ignoreArgs = ini_set('zend.exception_ignore_args', '0');
+
+        try {
+            $this->bucket(new MockHttpClient(new Response(200, '<html>proxy</html>')))->versioning();
+            self::fail('No exception.');
+        } catch (SerializationException $exception) {
+            $own = array_filter($exception->getTrace(), static fn(array $frame): bool => str_starts_with($frame['class'] ?? '', 'GoSuccess\\S3\\') && !str_contains($frame['class'] ?? '', '\\Tests\\'));
+            $arguments = var_export(array_column($own, 'args'), true);
+            self::assertStringContainsString('proxy', $arguments);
+            self::assertStringNotContainsString('test-secret-key', $arguments);
+            self::assertStringNotContainsString('Signature=', $arguments);
+        } finally {
+            ini_set('zend.exception_ignore_args', (string) $ignoreArgs);
+        }
+    }
+
+    public function testInvalidRetainUntilDateIsASerializationError(): void
+    {
+        $this->expectException(SerializationException::class);
+
+        $this->bucket(new MockHttpClient(new Response(200, '<Retention><Mode>GOVERNANCE</Mode><RetainUntilDate>2026-13-01T25:00:00Z</RetainUntilDate></Retention>')))->getRetention('k');
+    }
+
     public function testPresignedUrlMatchesTheApi(): void
     {
         $url = $this->bucket(new MockHttpClient())->presignedGetUrl('downloads/wpaas/abc/Backup "Haupt" ä.sql', 60, downloadName: 'Backup "Haupt" ä.sql');
@@ -304,6 +380,6 @@ final class BucketObjectTest extends TestCase
             }
         };
 
-        return new S3('http://127.0.0.1:9100', 'us-east-1', 'AKIAIOSFODNN7EXAMPLE', 'secret', options: new ClientOptions(retryBaseDelay: 0.0), httpClient: $http, clock: $clock)->bucket('backups');
+        return new S3('http://127.0.0.1:9100', 'us-east-1', 'AKIAIOSFODNN7EXAMPLE', 'test-secret-key', options: new ClientOptions(retryBaseDelay: 0.0), httpClient: $http, clock: $clock)->bucket('backups');
     }
 }
