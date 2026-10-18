@@ -1,0 +1,10 @@
+parameters:
+    level: max
+    # Analyze against the whole supported range so 8.5-only APIs are caught.
+    phpVersion:
+        min: 80400
+        max: 80599
+    paths:
+        - src
+        - tests
+    treatPhpDocTypesAsCertain: false
