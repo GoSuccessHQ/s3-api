@@ -24,12 +24,14 @@ class ApiException extends RuntimeException implements S3Exception
      * @param string      $responseBody Raw response body.
      * @param string|null $errorCode    S3's `<Code>`, e.g. `NoSuchKey`, `AccessDenied` or
      *                                  `SlowDown`.
+     * @param string|null $requestId    S3's `<RequestId>`, for the provider's support.
      */
     public function __construct(
         string $message,
         public readonly int $statusCode,
         public readonly string $responseBody = '',
         public readonly ?string $errorCode = null,
+        public readonly ?string $requestId = null,
     ) {
         parent::__construct($message, $statusCode);
     }
@@ -66,7 +68,7 @@ class ApiException extends RuntimeException implements S3Exception
             $message .= " ({$details->errorCode})";
         }
 
-        $arguments = [$message, $status, $body, $details->errorCode];
+        $arguments = [$message, $status, $body, $details->errorCode, $details->requestId];
 
         return match (true) {
             $status === 400 => new BadRequestException(...$arguments),

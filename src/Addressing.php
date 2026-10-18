@@ -57,6 +57,8 @@ final readonly class Addressing
 
     /**
      * The URL of the bucket or of a key, without a query.
+     *
+     * @return non-empty-string
      */
     public function url(string $bucket, string $key = ''): string
     {

@@ -76,6 +76,15 @@ final class CurlHttpClientTest extends TestCase
         self::assertSame('application/json', $echo['headers']['content-type']);
     }
 
+    public function testHeadReturnsHeadersWithoutWaitingForABody(): void
+    {
+        $response = $this->send(new Request(Method::Head, $this->uri('/echo'), [], null, 5.0));
+
+        self::assertSame(200, $response->statusCode);
+        self::assertSame('', $response->body);
+        self::assertSame('application/json', $response->header('content-type'));
+    }
+
     public function testErrorResponsesAreReturned(): void
     {
         $response = $this->send(new Request(Method::Get, $this->uri('/status/404')));

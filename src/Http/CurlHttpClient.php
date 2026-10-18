@@ -90,6 +90,8 @@ final class CurlHttpClient implements StreamingHttpClient
         $options = [
             \CURLOPT_URL => $request->uri,
             \CURLOPT_CUSTOMREQUEST => $request->method->value,
+            // A HEAD answer has no body; without NOBODY cURL would wait for one.
+            \CURLOPT_NOBODY => $request->method === Method::Head,
             // A redirect could carry the Authorization header to another host.
             \CURLOPT_FOLLOWLOCATION => false,
             // Never file://, ftp:// or the like, whatever the URI says.

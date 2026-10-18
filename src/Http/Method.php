@@ -11,6 +11,7 @@ namespace GoSuccess\S3\Http;
 enum Method: string
 {
     case Get = 'GET';
+    case Head = 'HEAD';
     case Post = 'POST';
     case Put = 'PUT';
     case Patch = 'PATCH';
@@ -23,7 +24,7 @@ enum Method: string
     public function isIdempotent(): bool
     {
         return match ($this) {
-            self::Get, self::Put, self::Delete => true,
+            self::Get, self::Head, self::Put, self::Delete => true,
             self::Post, self::Patch => false,
         };
     }
