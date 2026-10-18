@@ -58,7 +58,7 @@
             "@stan",
             "@test"
         ],
-        "rustfs:start": "docker run -d --rm --name s3-api-rustfs -p 127.0.0.1:9100:9000 --tmpfs /data rustfs/rustfs:1.0.1 --address :9000 --access-key s3-api-test --secret-key s3-api-test-secret /data",
+        "rustfs:start": "docker run -d --rm --name s3-api-rustfs -p 127.0.0.1:9100:9000 --tmpfs /data:uid=10001,gid=10001,mode=0700 rustfs/rustfs:1.0.1 --address :9000 --access-key s3-api-test --secret-key s3-api-test-secret /data",
         "rustfs:stop": "docker stop s3-api-rustfs"
     },
     "config": {

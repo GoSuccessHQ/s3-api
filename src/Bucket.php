@@ -410,6 +410,12 @@ final readonly class Bucket
         }
 
         $xml = Xml::parse($response, 'Retention', $this->connection);
+
+        // RustFS answers a version without retention with an empty <Retention/> and HTTP 200.
+        if (Xml::text($xml->Mode) === null && Xml::text($xml->RetainUntilDate) === null) {
+            return null;
+        }
+
         $mode = RetentionMode::tryFrom(Xml::text($xml->Mode) ?? '') ?? throw new SerializationException('The S3 answer has an unknown retention mode.');
 
         return new Retention($mode, Xml::date($xml->RetainUntilDate, 'RetainUntilDate'));

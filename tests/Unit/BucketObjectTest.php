@@ -210,9 +210,14 @@ final class BucketObjectTest extends TestCase
 
     public function testMissingRetentionIsNull(): void
     {
-        $retention = $this->bucket(new MockHttpClient(new Response(404, '<Error><Code>NoSuchObjectLockConfiguration</Code></Error>')))->getRetention('k');
+        $bucket = $this->bucket(new MockHttpClient(
+            new Response(404, '<Error><Code>NoSuchObjectLockConfiguration</Code></Error>'),
+            // RustFS 1.0.1 answers an object without retention like this (measured 2026-10-18).
+            new Response(200, '<?xml version="1.0" encoding="UTF-8"?><Retention></Retention>'),
+        ));
 
-        self::assertNull($retention);
+        self::assertNull($bucket->getRetention('k'));
+        self::assertNull($bucket->getRetention('k'));
     }
 
     public function testMultipartLifecycle(): void
